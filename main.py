@@ -59,16 +59,16 @@ def detect_candlestick(df):
 
     # Bullish Engulfing
     if close > open_ and prev["close"] < prev["open"] and close > prev["open"] and open_ < prev["close"]:
-        signals.append("🟢 Bullish Engulfing → Olası Yükseliş")
+        signals.append(("🟢 Bullish Engulfing", "up"))
     # Bearish Engulfing
     elif close < open_ and prev["close"] > prev["open"] and close < prev["open"] and open_ > prev["close"]:
-        signals.append("🔴 Bearish Engulfing → Olası Düşüş")
+        signals.append(("🔴 Bearish Engulfing", "down"))
     # Hammer
     elif close > open_ and (low + (close - open_)*2) > open_:
-        signals.append("🟢 Hammer → Potansiyel dönüş")
+        signals.append(("🟢 Hammer", "dot_green"))
     # Shooting Star
     elif close < open_ and (high - open_) > 2*(open_-close):
-        signals.append("🔴 Shooting Star → Potansiyel düşüş")
+        signals.append(("🔴 Shooting Star", "dot_red"))
 
     return signals
 
@@ -141,13 +141,10 @@ def detect_signals(df):
 
     # Candlestick Patterns
     cand_signals = detect_candlestick(df)
-    if cand_signals:
-        signals.extend(cand_signals)
-
-    return signals
+    return signals, cand_signals
 
 # =================== Candlestick Plot ===================
-def plot_candles(df, coin):
+def plot_candles(df, coin, cand_signals):
     df_plot = df.iloc[-50:]
     fig, ax = plt.subplots(figsize=(12,6))
 
@@ -158,6 +155,17 @@ def plot_candles(df, coin):
         ax.plot([row['time'], row['time']], [row['low'], row['high']], color='black')
         ax.add_patch(plt.Rectangle((mdates.date2num(row['time'])-0.01, row['open']),
                                    0.02, row['close']-row['open'], color=color))
+
+    # Candlestick Sinyallerini işaretle
+    for sig, typ in cand_signals:
+        if typ == "up":
+            ax.annotate("⬆️", xy=(df_plot['time'].iloc[-1], df_plot['high'].iloc[-1]*1.002), fontsize=12, color='green')
+        elif typ == "down":
+            ax.annotate("⬇️", xy=(df_plot['time'].iloc[-1], df_plot['low'].iloc[-1]*0.998), fontsize=12, color='red')
+        elif typ == "dot_green":
+            ax.plot(df_plot['time'].iloc[-1], df_plot['low'].iloc[-1]*0.995, "o", color="green")
+        elif typ == "dot_red":
+            ax.plot(df_plot['time'].iloc[-1], df_plot['high'].iloc[-1]*1.005, "o", color="red")
 
     ax.xaxis_date()
     plt.title(f"{coin} Mum Grafiği")
@@ -179,12 +187,12 @@ def main():
             df = get_futures_klines(symbol)
         if df is None or len(df) < 50:
             continue
-        signals = detect_signals(df)
-        if signals:
-            msg = f"{coin} ({INTERVAL}) Sinyalleri:\n" + "\n".join(signals)
+        signals, cand_signals = detect_signals(df)
+        if signals or cand_signals:
+            msg = f"{coin} ({INTERVAL}) Sinyalleri:\n" + "\n".join(signals + [s[0] for s in cand_signals])
             print(msg)
             send_message(msg)
-            buf = plot_candles(df, coin)
+            buf = plot_candles(df, coin, cand_signals)
             send_photo(buf, coin)
         else:
             print(f"{coin}: Sinyal Yok")
