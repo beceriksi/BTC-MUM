@@ -14,18 +14,22 @@ LIMIT = 200
 FUTURES_COINS = ["BTC", "ETH", "SOL", "BNB", "DOGE"]
 
 # =================== Telegram ===================
-def send_message(msg):
+def send_telegram(message):
     if not TELEGRAM_TOKEN or not CHAT_ID:
         print("❌ Telegram bilgileri eksik! Lütfen secretleri kontrol et.")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+        r = requests.post(url, data={"chat_id": CHAT_ID, "text": message})
         print(f"Telegram mesaj durumu: {r.status_code}")
         if r.status_code != 200:
             print("Hata mesajı:", r.text)
     except Exception as e:
         print("Telegram hatası:", e)
+
+def send_test_message():
+    print("🔹 Telegram test mesajı gönderiliyor...")
+    send_telegram("✅ Mum Botu çalışıyor! Bu test mesajıdır.")
 
 def send_photo(buf, coin):
     if not TELEGRAM_TOKEN or not CHAT_ID:
@@ -61,17 +65,11 @@ def detect_candlestick(df):
 
     open_ = last["open"]
     close = last["close"]
-    high = last["high"]
-    low = last["low"]
 
     if close > open_ and prev["close"] < prev["open"] and close > prev["open"] and open_ < prev["close"]:
         signals.append(("🟢 Bullish Engulfing", "up"))
     elif close < open_ and prev["close"] > prev["open"] and close < prev["open"] and open_ > prev["close"]:
         signals.append(("🔴 Bearish Engulfing", "down"))
-    elif close > open_ and (low + (close - open_)*2) > open_:
-        signals.append(("🟢 Hammer", "dot_green"))
-    elif close < open_ and (high - open_) > 2*(open_-close):
-        signals.append(("🔴 Shooting Star", "dot_red"))
 
     return signals
 
@@ -146,7 +144,6 @@ def detect_signals(df):
 def plot_candles(df, coin, cand_signals):
     df_plot = df.iloc[-50:]
     fig, ax = plt.subplots(figsize=(12,6))
-
     df_plot['time'] = pd.to_datetime(df_plot.get("time", df_plot.get("open_time", None)), unit='ms', errors='coerce')
 
     for idx, row in df_plot.iterrows():
@@ -160,10 +157,6 @@ def plot_candles(df, coin, cand_signals):
             ax.annotate("⬆️", xy=(df_plot['time'].iloc[-1], df_plot['high'].iloc[-1]*1.002), fontsize=12, color='green')
         elif typ == "down":
             ax.annotate("⬇️", xy=(df_plot['time'].iloc[-1], df_plot['low'].iloc[-1]*0.998), fontsize=12, color='red')
-        elif typ == "dot_green":
-            ax.plot(df_plot['time'].iloc[-1], df_plot['low'].iloc[-1]*0.995, "o", color="green")
-        elif typ == "dot_red":
-            ax.plot(df_plot['time'].iloc[-1], df_plot['high'].iloc[-1]*1.005, "o", color="red")
 
     ax.xaxis_date()
     plt.title(f"{coin} Mum Grafiği")
@@ -176,6 +169,11 @@ def plot_candles(df, coin, cand_signals):
 
 # =================== Main ===================
 def main():
+    print(f"=== Mum Botu Çalışıyor... {datetime.now()} ===")
+    
+    # Telegram test mesajını gönder
+    send_test_message()
+
     all_coins = ["BTCUSDT"] + [f"{c}_USDT" for c in FUTURES_COINS]
     for coin in all_coins:
         if coin.startswith("BTC"):
@@ -190,11 +188,3 @@ def main():
         if signals or cand_signals:
             msg = f"{coin} ({INTERVAL}) Sinyalleri:\n" + "\n".join(signals + [s[0] for s in cand_signals])
             print(msg)
-            send_message(msg)
-            buf = plot_candles(df, coin, cand_signals)
-            send_photo(buf, coin)
-        else:
-            print(f"{coin}: Sinyal Yok")
-
-if __name__ == "__main__":
-    main()
