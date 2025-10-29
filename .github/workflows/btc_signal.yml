@@ -11,14 +11,4 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - run: pip install requests pandas matplotlib
-
-      - name: Botu çalıştır
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python main.py
+      - uses: actions
