@@ -16,22 +16,29 @@ FUTURES_COINS = ["BTC", "ETH", "SOL", "BNB", "DOGE"]
 # =================== Telegram ===================
 def send_message(msg):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("Telegram bilgileri eksik.")
+        print("❌ Telegram bilgileri eksik! Lütfen secretleri kontrol et.")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+        r = requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+        print(f"Telegram mesaj durumu: {r.status_code}")
+        if r.status_code != 200:
+            print("Hata mesajı:", r.text)
     except Exception as e:
         print("Telegram hatası:", e)
 
 def send_photo(buf, coin):
     if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("❌ Telegram bilgileri eksik! Foto gönderilemedi.")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     files = {"photo": buf}
     data = {"chat_id": CHAT_ID, "caption": f"{coin} Mum Grafiği"}
     try:
-        requests.post(url, files=files, data=data)
+        r = requests.post(url, files=files, data=data)
+        print(f"Telegram foto durumu: {r.status_code}")
+        if r.status_code != 200:
+            print("Hata mesajı:", r.text)
     except Exception as e:
         print("Foto gönderme hatası:", e)
 
@@ -57,16 +64,12 @@ def detect_candlestick(df):
     high = last["high"]
     low = last["low"]
 
-    # Bullish Engulfing
     if close > open_ and prev["close"] < prev["open"] and close > prev["open"] and open_ < prev["close"]:
         signals.append(("🟢 Bullish Engulfing", "up"))
-    # Bearish Engulfing
     elif close < open_ and prev["close"] > prev["open"] and close < prev["open"] and open_ > prev["close"]:
         signals.append(("🔴 Bearish Engulfing", "down"))
-    # Hammer
     elif close > open_ and (low + (close - open_)*2) > open_:
         signals.append(("🟢 Hammer", "dot_green"))
-    # Shooting Star
     elif close < open_ and (high - open_) > 2*(open_-close):
         signals.append(("🔴 Shooting Star", "dot_red"))
 
@@ -79,6 +82,7 @@ def get_futures_klines(symbol):
         r = requests.get(url, timeout=10)
         data = r.json().get("data", [])
         if not data:
+            print(f"❌ {symbol} verisi alınamadı!")
             return None
         df = pd.DataFrame(data, columns=["time","open","high","low","close","volume"])
         df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
@@ -119,27 +123,22 @@ def detect_signals(df):
     prev = df.iloc[-2]
     signals = []
 
-    # MA+RSI
     if last['ma_fast'] > last['ma_slow'] and prev['ma_fast'] <= prev['ma_slow'] and last['rsi'] < 70:
         signals.append("🟢 BUY sinyali (MA+RSI)")
     elif last['ma_fast'] < last['ma_slow'] and prev['ma_fast'] >= prev['ma_slow'] and last['rsi'] > 30:
         signals.append("🔴 SELL sinyali (MA+RSI)")
 
-    # Testere Formasyonu
     vol = df['change'].rolling(10).std().iloc[-1]
     trend = df['close'].diff().rolling(10).mean().iloc[-1]
     if vol > 0.015 and abs(trend) < 50:
         signals.append("⚙️ Testere Formasyonu Tespit Edildi")
 
-    # Balina Satışı
     if -1 < last['change']*100 < 0 and last['volume'] > 5*last['vol_avg']:
         signals.append("🐋 Balina Satışı olabilir")
 
-    # Hacim Patlaması
     if last['volume'] > 3*last['vol_avg']:
         signals.append("💥 Hacim Patlaması tespit edildi")
 
-    # Candlestick Patterns
     cand_signals = detect_candlestick(df)
     return signals, cand_signals
 
@@ -156,7 +155,6 @@ def plot_candles(df, coin, cand_signals):
         ax.add_patch(plt.Rectangle((mdates.date2num(row['time'])-0.01, row['open']),
                                    0.02, row['close']-row['open'], color=color))
 
-    # Candlestick Sinyallerini işaretle
     for sig, typ in cand_signals:
         if typ == "up":
             ax.annotate("⬆️", xy=(df_plot['time'].iloc[-1], df_plot['high'].iloc[-1]*1.002), fontsize=12, color='green')
@@ -186,6 +184,7 @@ def main():
             symbol = coin.split("_")[0]
             df = get_futures_klines(symbol)
         if df is None or len(df) < 50:
+            print(f"{coin}: Veri yok veya yetersiz.")
             continue
         signals, cand_signals = detect_signals(df)
         if signals or cand_signals:
