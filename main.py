@@ -3,104 +3,78 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-# =================== Settings ===================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 INTERVAL = "1h"
 LIMIT = 200
 FUTURES_COINS = ["BTC", "ETH", "SOL", "BNB", "DOGE"]
 
-# =================== Telegram Functions ===================
 def send_telegram(message):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("❌ Telegram bilgileri eksik! Lütfen secretleri kontrol et.")
+        print("❌ Telegram bilgileri eksik!")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, data={"chat_id": CHAT_ID, "text": message})
-        print(f"Telegram mesaj durumu: {r.status_code}")
-        if r.status_code != 200:
-            print("Hata mesajı:", r.text)
-    except Exception as e:
-        print("Telegram hatası:", e)
+        requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+    except:
+        pass
 
-def send_test_message():
-    try:
-        print("🔹 Telegram test mesajı gönderiliyor...")
-        send_telegram("✅ Mum Botu çalışıyor! Bu test mesajıdır.")
-    except Exception as e:
-        print(f"Test mesajı gönderilemedi: {e}")
-
-# =================== Data Fetch ===================
 def get_futures_klines(symbol):
     url = f"https://www.mexc.com/open/api/v2/market/kline?symbol={symbol}_USDT&type={INTERVAL}&limit={LIMIT}"
     try:
         r = requests.get(url, timeout=10)
         data = r.json().get("data", [])
         if not data:
-            print(f"❌ {symbol} verisi alınamadı!")
             return None
         df = pd.DataFrame(data, columns=["time","open","high","low","close","volume"])
         df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
         return df
-    except Exception as e:
-        print(f"API hatası ({symbol}): {e}")
+    except:
         return None
 
-# =================== Signal Detection ===================
 def detect_signals(df):
-    df['ma_fast'] = df['close'].rolling(9).mean()
-    df['ma_slow'] = df['close'].rolling(21).mean()
-    df['change'] = df['close'].pct_change()
-    df['vol_avg'] = df['volume'].rolling(10).mean()
+    df["ema_fast"] = df["close"].ewm(span=9).mean()
+    df["ema_slow"] = df["close"].ewm(span=21).mean()
+    df["rsi"] = 100 - (100 / (1 + df["close"].pct_change().rolling(14).mean() / df["close"].pct_change().rolling(14).std()))
+    df["vol_avg"] = df["volume"].rolling(10).mean()
 
     last = df.iloc[-1]
     prev = df.iloc[-2]
+
     signals = []
 
-    # MA + trend
-    if last['ma_fast'] > last['ma_slow'] and prev['ma_fast'] <= prev['ma_slow']:
-        signals.append("🟢 BUY sinyali (MA Kesimi)")
-    elif last['ma_fast'] < last['ma_slow'] and prev['ma_fast'] >= prev['ma_slow']:
-        signals.append("🔴 SELL sinyali (MA Kesimi)")
+    # EMA CROSS
+    if last["ema_fast"] > last["ema_slow"] and prev["ema_fast"] <= prev["ema_slow"]:
+        if last["rsi"] > 48 and last["volume"] > last["vol_avg"] * 1.2:
+            signals.append("🟢 BUY (EMA Cross + RSI + Hacim)")
 
-    # Testere Formasyonu
-    vol = df['change'].rolling(10).std().iloc[-1]
-    trend = df['close'].diff().rolling(10).mean().iloc[-1]
-    if vol > 0.015 and abs(trend) < 50:
-        signals.append("⚙️ Testere Formasyonu Tespit Edildi")
+    if last["ema_fast"] < last["ema_slow"] and prev["ema_fast"] >= prev["ema_slow"]:
+        if last["rsi"] < 52 and last["volume"] > last["vol_avg"] * 1.2:
+            signals.append("🔴 SELL (EMA Cross + RSI + Hacim)")
 
-    # Balina Satışı
-    if -0.01 < last['change'] < 0 and last['volume'] > 5*last['vol_avg']:
-        signals.append("🐋 Balina Satışı olabilir")
-
-    # Hacim Patlaması
-    if last['volume'] > 3*last['vol_avg']:
-        signals.append("💥 Hacim Patlaması tespit edildi")
+    # Extra sinyal: RSI aşırı durum
+    if last["rsi"] < 30:
+        signals.append("⚠️ RSI Aşırı Satış (Dip Yakın)")
+    if last["rsi"] > 70:
+        signals.append("⚠️ RSI Aşırı Alım (Tepe Yakın)")
 
     return signals
 
-# =================== Main ===================
 def main():
-    print(f"=== Mum Botu Çalışıyor... {datetime.now()} ===")
-    
-    # Telegram test mesajını en başta gönder
-    send_test_message()
+    print(f"=== Mum Botu Aktif {datetime.now()} ===")
 
-    all_coins = ["BTCUSDT"] + [f"{c}_USDT" for c in FUTURES_COINS]
-    for coin in all_coins:
-        symbol = coin.replace("_USDT", "")
-        df = get_futures_klines(symbol)
-        if df is None or len(df) < 50:
-            print(f"{coin}: Veri yok veya yetersiz.")
+    for coin in ["BTCUSDT"] + [f"{c}_USDT" for c in FUTURES_COINS]:
+        df = get_futures_klines(coin.replace("_USDT",""))
+        if df is None or len(df) < 60:
             continue
+
         signals = detect_signals(df)
         if signals:
-            msg = f"{coin} ({INTERVAL}) Sinyalleri:\n" + "\n".join(signals)
-            print(msg)
+            msg = f"📈 {coin} ({INTERVAL})\n" + "\n".join(signals)
             send_telegram(msg)
+            print("Sinyal gönderildi ✅", msg)
         else:
-            print(f"{coin}: Sinyal bulunamadı ❌")
+            print(f"{coin}: Sinyal yok ❌")
 
 if __name__ == "__main__":
     main()
