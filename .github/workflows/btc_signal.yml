@@ -1,23 +1,10 @@
-name: Majors Multi-TF Signal Scanner
+import time
+from main import main
 
-on:
-  schedule:
-    - cron: "*/15 * * * *"   # 15 dakikada bir
-  workflow_dispatch:
+INTERVAL_SECONDS = 3600  # 1 saat aralıkla çalışacak
 
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-      - name: Install deps
-        run: pip install pandas requests
-      - name: Run scanner
-        run: python main.py
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+if __name__ == "__main__":
+    while True:
+        main()
+        print(f"⏳ {INTERVAL_SECONDS/60} dakika bekleniyor...")
+        time.sleep(INTERVAL_SECONDS)
