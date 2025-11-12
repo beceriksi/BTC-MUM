@@ -1,0 +1,47 @@
+name: okx-top100-smart-signals
+
+on:
+  schedule:
+    - cron: "*/3 * * * *"     # 3 dakikada bir
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas numpy
+
+      - name: Run TOP100 scanner
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID:        ${{ secrets.CHAT_ID }}
+          TOP_N_COINS:    "100"
+          QUOTES:         "USDT,USD"
+          VOL_MIN_EARLY:  "500000"
+          VRATIO_EARLY:   "2.6"
+          MOM_1M_MIN:     "0.0040"
+          VOL_MIN_CONF:   "800000"
+          VRATIO_CONF:    "3.2"
+          PULLBACK_MIN:   "0.0020"
+          PULLBACK_MAX:   "0.0075"
+          RSI5_CONF_MIN:  "54.0"
+          VOLAT_MAX:      "0.0070"
+          COOLDOWN_MIN:   "15"
+          MAX_MSG_COINS:  "12"
+        run: |
+          python main.py
